@@ -1032,15 +1032,6 @@ class Heap {
         allocator_type != kAllocatorTypeTLAB &&
         allocator_type != kAllocatorTypeRegion;
   }
-  static ALWAYS_INLINE bool AllocatorMayHaveConcurrentGC(AllocatorType allocator_type) {
-    if (kUseUserfaultfd || kUseReadBarrier) {
-      // May have the TLAB allocator but is always concurrent. TODO: clean this up.
-      return true;
-    }
-    return
-        allocator_type != kAllocatorTypeTLAB &&
-        allocator_type != kAllocatorTypeBumpPointer;
-  }
   static bool IsMovingGc(CollectorType collector_type) {
     return
         collector_type == kCollectorTypeCC ||
