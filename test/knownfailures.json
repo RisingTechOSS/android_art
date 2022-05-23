@@ -1134,7 +1134,7 @@
                   "2006-virtual-structural-finalizing",
                   "2007-virtual-structural-finalizable"
                 ],
-        "env_vars": {"ART_USE_READ_BARRIER": "false"},
+        "env_vars": {"ART_USE_READ_BARRIER": "false", "ART_DEFAULT_GC_TYPE": "CMS"},
         "description": ["Relies on the accuracy of the Heap::VisitObjects function which is broken",
                         " when READ_BARRIER==false (I.e. On CMS collector)."],
         "bug": "b/147207934"
@@ -1421,7 +1421,7 @@
     },
     {
         "tests": ["692-vdex-secondary-loader"],
-        "env_vars": {"ART_USE_READ_BARRIER": "false"},
+        "env_vars": {"ART_USE_READ_BARRIER": "false", "ART_DEFAULT_GC_TYPE": "CMS"},
         "description": ["Uses the low-ram flag which does not work with CMS"]
     },
     {
