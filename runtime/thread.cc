@@ -4335,16 +4335,12 @@ static void SweepCacheEntry(IsMarkedVisitor* visitor, const Instruction* inst, s
       // New opcode is using the cache. We need to explicitly handle it in this method.
       DCHECK(false) << "Unhandled opcode " << inst->Opcode();
   }
-};
+}
 
-void Thread::SweepInterpreterCaches(IsMarkedVisitor* visitor) {
-  MutexLock mu(Thread::Current(), *Locks::thread_list_lock_);
-  Runtime::Current()->GetThreadList()->ForEach([visitor](Thread* thread) {
-    Locks::mutator_lock_->AssertSharedHeld(Thread::Current());
-    for (InterpreterCache::Entry& entry : thread->GetInterpreterCache()->GetArray()) {
-      SweepCacheEntry(visitor, reinterpret_cast<const Instruction*>(entry.first), &entry.second);
-    }
-  });
+void Thread::SweepInterpreterCache(IsMarkedVisitor* visitor) {
+  for (InterpreterCache::Entry& entry : GetInterpreterCache()->GetArray()) {
+    SweepCacheEntry(visitor, reinterpret_cast<const Instruction*>(entry.first), &entry.second);
+  }
 }
 
 // FIXME: clang-r433403 reports the below function exceeds frame size limit.
