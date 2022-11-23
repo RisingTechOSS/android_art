@@ -169,6 +169,13 @@ class OatFileAssistantTest : public OatFileAssistantBaseTest,
                             zip_fd);
   }
 
+  void ExpectHasDexFiles(OatFileAssistant* oat_file_assistant, bool expected_value) {
+    std::string error_msg;
+    std::optional<bool> has_dex_files = oat_file_assistant->HasDexFiles(&error_msg);
+    ASSERT_TRUE(has_dex_files.has_value()) << error_msg;
+    EXPECT_EQ(*has_dex_files, expected_value);
+  }
+
   std::unique_ptr<ClassLoaderContext> default_context_ = InitializeDefaultContext();
   bool with_runtime_;
 };
@@ -326,7 +333,7 @@ TEST_P(OatFileAssistantTest, DexNoOat) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 
   VerifyOptimizationStatus(
       &oat_file_assistant,
@@ -379,7 +386,7 @@ TEST_P(OatFileAssistantTest, OdexUpToDate) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 
   VerifyOptimizationStatus(
       &oat_file_assistant,
@@ -417,7 +424,7 @@ TEST_P(OatFileAssistantTest, OdexUpToDatePartialBootImage) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 
   VerifyOptimizationStatus(
       &oat_file_assistant,
@@ -459,7 +466,7 @@ TEST_P(OatFileAssistantTest, OdexUpToDateSymLink) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 }
 
 // Case: We have a DEX file and up-to-date OAT file for it.
@@ -495,7 +502,7 @@ TEST_P(OatFileAssistantTest, OatUpToDate) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 
   VerifyOptimizationStatus(
       &oat_file_assistant,
@@ -542,7 +549,7 @@ TEST_P(OatFileAssistantTest, GetDexOptNeededWithFd) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 }
 
 // Case: Passing invalid odex fd and valid vdex and zip fds.
@@ -579,7 +586,7 @@ TEST_P(OatFileAssistantTest, GetDexOptNeededWithInvalidOdexFd) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 }
 
 // Case: Passing invalid vdex fd and valid odex and zip fds.
@@ -611,7 +618,7 @@ TEST_P(OatFileAssistantTest, GetDexOptNeededWithInvalidVdexFd) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 }
 
 // Case: Passing invalid vdex and odex fd with valid zip fd.
@@ -752,7 +759,7 @@ TEST_P(OatFileAssistantTest, ProfileOatUpToDate) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 }
 
 // Case: We have a MultiDEX file and up-to-date OAT file for it.
@@ -852,7 +859,7 @@ TEST_P(OatFileAssistantTest, OatDexOutOfDate) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatDexOutOfDate, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 
   VerifyOptimizationStatus(
       &oat_file_assistant,
@@ -932,7 +939,7 @@ TEST_P(OatFileAssistantTest, OatImageOutOfDate) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatBootImageOutOfDate, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 
   VerifyOptimizationStatus(
       &oat_file_assistant,
@@ -974,7 +981,7 @@ TEST_P(OatFileAssistantTest, OatVerifyAtRuntimeImageOutOfDate) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 }
 
 // Case: We have a DEX file and an ODEX file, but no OAT file.
@@ -999,7 +1006,7 @@ TEST_P(OatFileAssistantTest, DexOdexNoOat) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 
   // We should still be able to get the non-executable odex file to run from.
   std::unique_ptr<OatFile> oat_file = oat_file_assistant.GetBestOatFile();
@@ -1028,7 +1035,7 @@ TEST_P(OatFileAssistantTest, ResourceOnlyDex) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_FALSE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, false);
 
   EXPECT_EQ(OatFileAssistant::kNoDexOptNeeded,
       GetDexOptNeeded(&oat_file_assistant, CompilerFilter::kSpeed));
@@ -1036,7 +1043,7 @@ TEST_P(OatFileAssistantTest, ResourceOnlyDex) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_FALSE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, false);
 }
 
 // Case: We have a DEX file, an ODEX file and an OAT file.
@@ -1063,7 +1070,7 @@ TEST_P(OatFileAssistantTest, OdexOatOverlap) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 
   std::unique_ptr<OatFile> oat_file = oat_file_assistant.GetBestOatFile();
   ASSERT_TRUE(oat_file.get() != nullptr);
@@ -1099,7 +1106,7 @@ TEST_P(OatFileAssistantTest, DexVerifyAtRuntimeOdexNoOat) {
   EXPECT_FALSE(oat_file_assistant.IsInBootClassPath());
   EXPECT_EQ(OatFileAssistant::kOatUpToDate, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_TRUE(oat_file_assistant.HasDexFiles());
+  ExpectHasDexFiles(&oat_file_assistant, true);
 }
 
 // Case: We have a DEX file and up-to-date OAT file for it.
@@ -1273,7 +1280,8 @@ TEST_P(OatFileAssistantTest, ShortDexLocation) {
       GetDexOptNeeded(&oat_file_assistant, CompilerFilter::kSpeed));
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OdexFileStatus());
   EXPECT_EQ(OatFileAssistant::kOatCannotOpen, oat_file_assistant.OatFileStatus());
-  EXPECT_FALSE(oat_file_assistant.HasDexFiles());
+  std::string error_msg_ignored;
+  EXPECT_FALSE(oat_file_assistant.HasDexFiles(&error_msg_ignored).has_value());
 }
 
 // Case: Non-standard extension for dex file.
