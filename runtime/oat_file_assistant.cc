@@ -391,8 +391,7 @@ bool OatFileAssistant::DexChecksumUpToDate(const VdexFile& file, std::string* er
   ScopedTrace trace("DexChecksumUpToDate(vdex)");
   const std::vector<uint32_t>* required_dex_checksums = GetRequiredDexChecksums(error_msg);
   if (required_dex_checksums == nullptr) {
-    // TODO(jiakaiz): Change to false.
-    return true;
+    return false;
   }
   if (required_dex_checksums->empty()) {
     LOG(WARNING) << "Required dex checksums not found. Assuming dex checksums are up to date.";
@@ -428,8 +427,7 @@ bool OatFileAssistant::DexChecksumUpToDate(const OatFile& file, std::string* err
   ScopedTrace trace("DexChecksumUpToDate(oat)");
   const std::vector<uint32_t>* required_dex_checksums = GetRequiredDexChecksums(error_msg);
   if (required_dex_checksums == nullptr) {
-    // TODO(jiakaiz): Change to false.
-    return true;
+    return false;
   }
   if (required_dex_checksums->empty()) {
     LOG(WARNING) << "Required dex checksums not found. Assuming dex checksums are up to date.";
