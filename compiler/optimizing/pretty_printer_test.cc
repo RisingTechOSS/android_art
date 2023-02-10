@@ -27,7 +27,7 @@
 
 namespace art {
 
-class PrettyPrinterTest : public OptimizingUnitTest {
+class PrettyPrinterTest : public CommonCompilerTest, public OptimizingUnitTestHelper {
  protected:
   void TestCode(const std::vector<uint16_t>& data, const char* expected);
 };

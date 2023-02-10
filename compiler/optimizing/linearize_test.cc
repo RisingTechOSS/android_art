@@ -30,7 +30,7 @@
 
 namespace art {
 
-class LinearizeTest : public OptimizingUnitTest {
+class LinearizeTest : public CommonCompilerTest, public OptimizingUnitTestHelper {
  protected:
   template <size_t number_of_blocks>
   void TestCode(const std::vector<uint16_t>& data,

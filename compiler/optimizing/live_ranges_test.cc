@@ -27,7 +27,7 @@
 
 namespace art {
 
-class LiveRangesTest : public OptimizingUnitTest {
+class LiveRangesTest : public CommonCompilerTest, public OptimizingUnitTestHelper {
  protected:
   HGraph* BuildGraph(const std::vector<uint16_t>& data);
 

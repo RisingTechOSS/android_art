@@ -25,7 +25,7 @@
 
 namespace art {
 
-class DeadCodeEliminationTest : public OptimizingUnitTest {
+class DeadCodeEliminationTest : public CommonCompilerTest, public OptimizingUnitTestHelper {
  protected:
   void TestCode(const std::vector<uint16_t>& data,
                 const std::string& expected_before,
