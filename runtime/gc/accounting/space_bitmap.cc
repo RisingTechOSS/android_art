@@ -114,9 +114,11 @@ std::string SpaceBitmap<kAlignment>::Dump() const {
 }
 
 template<size_t kAlignment>
-void SpaceBitmap<kAlignment>::Clear() {
+void SpaceBitmap<kAlignment>::Clear(bool release_memory) {
   if (bitmap_begin_ != nullptr) {
-    mem_map_.MadviseDontNeedAndZero();
+    // We currently always release the memory to the OS.
+    static constexpr bool kAlwaysReleaseBitmapMemory = true;
+    mem_map_.FillWithZero(kAlwaysReleaseBitmapMemory || release_memory);
   }
 }
 

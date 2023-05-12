@@ -831,20 +831,9 @@ void MemMap::ReleaseReservedMemory(size_t byte_count) {
   }
 }
 
-void MemMap::MadviseDontNeedAndZero() {
-  if (base_begin_ != nullptr || base_size_ != 0) {
-    if (!kMadviseZeroes) {
-      memset(base_begin_, 0, base_size_);
-    }
-#ifdef _WIN32
-    // It is benign not to madvise away the pages here.
-    PLOG(WARNING) << "MemMap::MadviseDontNeedAndZero does not madvise on Windows.";
-#else
-    int result = madvise(base_begin_, base_size_, MADV_DONTNEED);
-    if (result == -1) {
-      PLOG(WARNING) << "madvise failed";
-    }
-#endif
+void MemMap::FillWithZero(bool release_memory) {
+  if (base_begin_ != nullptr && base_size_ != 0) {
+    ZeroPages(base_begin_, base_size_, release_memory);
   }
 }
 
@@ -1236,7 +1225,7 @@ void MemMap::TryReadable() {
   }
 }
 
-void ZeroAndReleasePages(void* address, size_t length) {
+void ZeroPages(void* address, size_t length, bool release_memory) {
   if (length == 0) {
     return;
   }
@@ -1252,13 +1241,24 @@ void ZeroAndReleasePages(void* address, size_t length) {
     DCHECK_LE(mem_begin, page_begin);
     DCHECK_LE(page_begin, page_end);
     DCHECK_LE(page_end, mem_end);
-    std::fill(mem_begin, page_begin, 0);
 #ifdef _WIN32
-    LOG(WARNING) << "ZeroAndReleasePages does not madvise on Windows.";
+    UNUSED(release_memory);
+    LOG(WARNING) << "ZeroPages does not madvise on Windows.";
+    std::fill(mem_begin, mem_end, 0);
 #else
-    CHECK_NE(madvise(page_begin, page_end - page_begin, MADV_DONTNEED), -1) << "madvise failed";
+    if (release_memory) {
+      std::fill(mem_begin, page_begin, 0);
+      std::fill(page_end, mem_end, 0);
+      bool res = madvise(page_begin, page_end - page_begin, MADV_DONTNEED);
+      CHECK_NE(res, -1) << "madvise failed";
+    } else {
+      std::fill(mem_begin, mem_end, 0);
+#ifdef MADV_FREE
+      bool res = madvise(page_begin, page_end - page_begin, MADV_FREE);
+      CHECK_NE(res, -1) << "madvise failed";
 #endif
-    std::fill(page_end, mem_end, 0);
+    }
+#endif
   }
 }
 

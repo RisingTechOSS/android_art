@@ -230,7 +230,10 @@ class MemMap {
 
   bool Protect(int prot);
 
-  void MadviseDontNeedAndZero();
+  void FillWithZero(bool release_memory);
+  void MadviseDontNeedAndZero() {
+    FillWithZero(/* release_memory= */ true);
+  }
   int MadviseDontFork();
 
   int GetProtect() const {
@@ -419,8 +422,11 @@ inline void swap(MemMap& lhs, MemMap& rhs) {
 
 std::ostream& operator<<(std::ostream& os, const MemMap& mem_map);
 
-// Zero and release pages if possible, no requirements on alignments.
-void ZeroAndReleasePages(void* address, size_t length);
+// Zero and maybe release pages if possible, no requirements on alignments.
+void ZeroPages(void* address, size_t length, bool release_memory);
+inline void ZeroAndReleasePages(void* address, size_t length) {
+  ZeroPages(address, length, /* release_memory= */ true);
+}
 
 }  // namespace art
 

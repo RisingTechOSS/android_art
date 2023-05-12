@@ -102,7 +102,9 @@ class SpaceBitmap {
   bool AtomicTestAndSet(const mirror::Object* obj);
 
   // Fill the bitmap with zeroes.  Returns the bitmap's memory to the system as a side-effect.
-  void Clear();
+  // If `release_memory` is true, this method will also try to give back the
+  // memory to the OS.
+  void Clear(bool release_memory = true);
 
   // Clear a range covered by the bitmap using madvise if possible.
   void ClearRange(const mirror::Object* begin, const mirror::Object* end);
