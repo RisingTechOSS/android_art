@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
+#include <android-base/parseint.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
+#include <charconv>
 #include <functional>
 #include <map>
 #include <optional>
@@ -26,9 +31,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <android-base/parseint.h>
 #include "android-base/stringprintf.h"
-
 #include "art_field-inl.h"
 #include "art_method-inl.h"
 #include "base/array_ref.h"
@@ -36,6 +39,7 @@
 #include "base/string_view_cpp20.h"
 #include "base/unix_file/fd_file.h"
 #include "class_linker.h"
+#include "cmdline.h"
 #include "gc/heap.h"
 #include "gc/space/image_space.h"
 #include "image-inl.h"
@@ -44,14 +48,8 @@
 #include "oat.h"
 #include "oat_file.h"
 #include "oat_file_manager.h"
-#include "scoped_thread_state_change-inl.h"
-
 #include "procinfo/process_map.h"
-#include "cmdline.h"
-
-#include <signal.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+#include "scoped_thread_state_change-inl.h"
 
 namespace art {
 
@@ -1246,6 +1244,148 @@ class ImgDiagDumper {
     return ret;
   }
 
+  void DumpPageInfo(uint64_t virtual_page_index, std::ostream& os) {
+    const uint64_t virtual_page_addr = virtual_page_index * kPageSize;
+    os << "Virtual page index: " << virtual_page_index << "\n";
+    os << "Virtual page addr: " << virtual_page_addr << "\n";
+
+    std::string error_msg;
+    uint64_t page_frame_number = -1;
+    if (!GetPageFrameNumber(
+            &image_pagemap_file_, virtual_page_index, &page_frame_number, &error_msg)) {
+      os << "Failed to get page frame number: " << error_msg << "\n";
+      return;
+    }
+    os << "Page frame number: " << page_frame_number << "\n";
+
+    uint64_t page_count = -1;
+    if (!GetPageFlagsOrCounts(&kpagecount_file_,
+                              ArrayRef<const uint64_t>(&page_frame_number, 1),
+                              /*out*/ ArrayRef<uint64_t>(&page_count, 1),
+                              /*out*/ &error_msg)) {
+      os << "Failed to get page count: " << error_msg << "\n";
+      return;
+    }
+    os << "kpagecount: " << page_count << "\n";
+
+    uint64_t page_flags = 0;
+    if (!GetPageFlagsOrCounts(&kpageflags_file_,
+                              ArrayRef<const uint64_t>(&page_frame_number, 1),
+                              /*out*/ ArrayRef<uint64_t>(&page_flags, 1),
+                              /*out*/ &error_msg)) {
+      os << "Failed to get page flags: " << error_msg << "\n";
+      return;
+    }
+    os << "kpageflags: " << page_flags << "\n";
+
+    if (page_count != 0) {
+      std::vector<uint8_t> page_contents(kPageSize);
+      if (!image_mem_file_.PreadFully(
+              page_contents.data(), page_contents.size(), virtual_page_addr)) {
+        os << "Failed to read page contents\n";
+        return;
+      }
+      os << "Zero bytes: " << std::count(std::begin(page_contents), std::end(page_contents), 0)
+         << "\n";
+    }
+  }
+
+  void CountZeroPages(std::ostream& os) {
+    MapPageCounts total;
+    std::vector<MapPageCounts> stats;
+    for (const android::procinfo::MapInfo& map_info : image_proc_maps_) {
+      MapPageCounts map_page_counts;
+      std::string error_msg;
+      if (!GetMapPageCounts(map_info, map_page_counts, error_msg)) {
+        os << "Error getting map page counts for: " << map_info.name << "\n" << error_msg << "\n\n";
+        continue;
+      }
+      total.pages += map_page_counts.pages;
+      total.private_zero_pages += map_page_counts.private_zero_pages;
+      total.shared_zero_pages += map_page_counts.shared_zero_pages;
+      total.non_present_pages += map_page_counts.non_present_pages;
+      total.zero_page_pfns.insert(std::begin(map_page_counts.zero_page_pfns),
+                                  std::end(map_page_counts.zero_page_pfns));
+      stats.push_back(std::move(map_page_counts));
+    }
+
+    // Sort by different page counts, descending.
+    const auto sort_by_private_zero_pages = [](const auto& stats1, const auto& stats2) {
+      return stats1.private_zero_pages > stats2.private_zero_pages;
+    };
+    const auto sort_by_shared_zero_pages = [](const auto& stats1, const auto& stats2) {
+      return stats1.shared_zero_pages > stats2.shared_zero_pages;
+    };
+    const auto sort_by_unique_zero_pages = [](const auto& stats1, const auto& stats2) {
+      return stats1.zero_page_pfns.size() > stats2.zero_page_pfns.size();
+    };
+
+    // Print up to `max_lines` entries.
+    const auto print_stats = [&stats, &os](size_t max_lines) {
+      for (const MapPageCounts& map_page_counts : stats) {
+        if (max_lines == 0) {
+          return;
+        }
+        // Skip entries with no present pages.
+        if (map_page_counts.pages == 0) {
+          continue;
+        }
+        max_lines -= 1;
+        os << StringPrintf("%" PRIx64 "-%" PRIx64 " %s: pages=%" PRIu64
+                           ", private_zero_pages=%" PRIu64 ", shared_zero_pages=%" PRIu64
+                           ", unique_zero_pages=%" PRIu64 ", non_present_pages=%" PRIu64 "\n",
+                           map_page_counts.start,
+                           map_page_counts.end,
+                           map_page_counts.name.c_str(),
+                           map_page_counts.pages,
+                           map_page_counts.private_zero_pages,
+                           map_page_counts.shared_zero_pages,
+                           uint64_t{map_page_counts.zero_page_pfns.size()},
+                           map_page_counts.non_present_pages);
+      }
+    };
+
+    os << StringPrintf("total_pages=%" PRIu64 ", total_private_zero_pages=%" PRIu64
+                       ", total_shared_zero_pages=%" PRIu64 ", total_unique_zero_pages=%" PRIu64
+                       ", total_non_present_pages=%" PRIu64 "\n",
+                       total.pages,
+                       total.private_zero_pages,
+                       total.shared_zero_pages,
+                       uint64_t{total.zero_page_pfns.size()},
+                       total.non_present_pages);
+    os << "\n\n";
+
+    const size_t top_lines = std::min(size_t{20}, stats.size());
+    std::partial_sort(std::begin(stats),
+                      std::begin(stats) + top_lines,
+                      std::end(stats),
+                      sort_by_unique_zero_pages);
+    os << "Top " << top_lines << " maps by unique zero pages (unique PFN count)\n";
+    print_stats(top_lines);
+    os << "\n\n";
+
+    std::partial_sort(std::begin(stats),
+                      std::begin(stats) + top_lines,
+                      std::end(stats),
+                      sort_by_private_zero_pages);
+    os << "Top " << top_lines << " maps by private zero pages (kpagecount == 1)\n";
+    print_stats(top_lines);
+    os << "\n\n";
+
+    std::partial_sort(std::begin(stats),
+                      std::begin(stats) + top_lines,
+                      std::end(stats),
+                      sort_by_shared_zero_pages);
+    os << "Top " << top_lines << " maps by shared zero pages (kpagecount > 1)\n";
+    print_stats(top_lines);
+    os << "\n\n";
+
+    std::sort(std::begin(stats), std::end(stats), sort_by_unique_zero_pages);
+    os << "All maps by unique zero pages (unique PFN count)\n";
+    print_stats(stats.size());
+    os << "\n\n";
+  }
+
  private:
   bool DumpImageDiff(const ImageHeader& image_header, const std::string& image_location)
       REQUIRES_SHARED(Locks::mutator_lock_) {
@@ -1574,7 +1714,7 @@ class ImgDiagDumper {
     if (!page_map_file->PreadFully(page_frame_numbers.data(),
                                    page_frame_numbers.size() * kPageMapEntrySize,
                                    virtual_page_index * kPageMapEntrySize)) {
-      *error_msg = StringPrintf("Failed to read the virtual page index entries from %s, error: %s",
+      *error_msg = StringPrintf("Failed to read virtual page index entries from %s, error: %s",
                                 page_map_file->GetPath().c_str(),
                                 strerror(errno));
       return false;
@@ -1717,6 +1857,80 @@ class ImgDiagDumper {
     return BaseName(std::string(image_location));
   }
 
+  struct MapPageCounts {
+    // Present pages count.
+    uint64_t pages = 0;
+    // Non-present pages count.
+    uint64_t non_present_pages = 0;
+    // Private (kpagecount == 1) zero page count.
+    uint64_t private_zero_pages = 0;
+    // Shared (kpagecount > 1) zero page count.
+    uint64_t shared_zero_pages = 0;
+    // Physical frame numbers of zero pages.
+    std::unordered_set<uint64_t> zero_page_pfns;
+
+    // Memory map name.
+    std::string name;
+    // Memory map start address.
+    uint64_t start = 0;
+    // Memory map end address.
+    uint64_t end = 0;
+  };
+
+  bool GetMapPageCounts(const android::procinfo::MapInfo& map_info,
+                        MapPageCounts& map_page_counts,
+                        std::string& error_msg) {
+    map_page_counts.name = map_info.name;
+    map_page_counts.start = map_info.start;
+    map_page_counts.end = map_info.end;
+    std::vector<uint8_t> page_contents(kPageSize);
+    for (uint64_t begin = map_info.start; begin < map_info.end; begin += kPageSize) {
+      const size_t virtual_page_index = begin / kPageSize;
+      uint64_t page_frame_number = -1;
+      if (!GetPageFrameNumber(
+              &image_pagemap_file_, virtual_page_index, &page_frame_number, &error_msg)) {
+        return false;
+      }
+      uint64_t page_count = -1;
+      if (!GetPageFlagsOrCounts(&kpagecount_file_,
+                                ArrayRef<const uint64_t>(&page_frame_number, 1),
+                                /*out*/ ArrayRef<uint64_t>(&page_count, 1),
+                                /*out*/ &error_msg)) {
+        return false;
+      }
+
+      const auto is_zero_page = [](const std::vector<uint8_t>& page) {
+        const auto non_zero_it =
+            std::find_if(std::begin(page), std::end(page), [](uint8_t b) { return b != 0; });
+        return non_zero_it == std::end(page);
+      };
+
+      if (page_count != 0) {
+        // Handle present page.
+        if (!image_mem_file_.PreadFully(page_contents.data(), page_contents.size(), begin)) {
+          error_msg = StringPrintf("Failed to read present page %" PRIx64 " for mapping %s\n",
+                                   begin,
+                                   map_info.name.c_str());
+          return false;
+        }
+        const bool is_zero = is_zero_page(page_contents);
+        const bool is_private = (page_count == 1);
+        map_page_counts.pages += 1;
+        if (is_zero) {
+          map_page_counts.zero_page_pfns.insert(page_frame_number);
+          if (is_private) {
+            map_page_counts.private_zero_pages += 1;
+          } else {
+            map_page_counts.shared_zero_pages += 1;
+          }
+        }
+      } else {
+        map_page_counts.non_present_pages += 1;
+      }
+    }
+    return true;
+  }
+
   static constexpr size_t kPageMapEntrySize = sizeof(uint64_t);
   // bits 0-54 [in /proc/$pid/pagemap]
   static constexpr uint64_t kPageFrameNumberMask = (1ULL << 55) - 1;
@@ -1760,7 +1974,9 @@ static int DumpImage(Runtime* runtime,
                      std::ostream* os,
                      pid_t image_diff_pid,
                      pid_t zygote_diff_pid,
-                     bool dump_dirty_objects) {
+                     bool dump_dirty_objects,
+                     bool count_zero_pages,
+                     std::optional<uint64_t> virtual_page_index) {
   ScopedObjectAccess soa(Thread::Current());
   gc::Heap* heap = runtime->GetHeap();
   const std::vector<gc::space::ImageSpace*>& image_spaces = heap->GetBootImageSpaces();
@@ -1771,6 +1987,14 @@ static int DumpImage(Runtime* runtime,
                                 dump_dirty_objects);
   if (!img_diag_dumper.Init()) {
     return EXIT_FAILURE;
+  }
+  if (virtual_page_index != std::nullopt) {
+    img_diag_dumper.DumpPageInfo(*virtual_page_index, *os);
+    return EXIT_SUCCESS;
+  }
+  if (count_zero_pages) {
+    img_diag_dumper.CountZeroPages(*os);
+    return EXIT_SUCCESS;
   }
   for (gc::space::ImageSpace* image_space : image_spaces) {
     const ImageHeader& image_header = image_space->GetImageHeader();
@@ -1818,6 +2042,16 @@ struct ImgDiagArgs : public CmdlineArgs {
       }
     } else if (option == "--dump-dirty-objects") {
       dump_dirty_objects_ = true;
+    } else if (option == "--count-zero-pages") {
+      count_zero_pages_ = true;
+    } else if (StartsWith(option, "--dump-page-info=")) {
+      std::string_view value = option.substr(strlen("--dump-page-info="));
+      virtual_page_index_ = 0;
+      std::from_chars_result res =
+          std::from_chars(value.begin(), value.end(), virtual_page_index_.value());
+      if (res.ec != std::errc()) {
+        *error_msg = "Failed to parse virtual page index: " + std::string(value);
+      }
     } else {
       return kParseUnknownArgument;
     }
@@ -1871,6 +2105,10 @@ struct ImgDiagArgs : public CmdlineArgs {
         "against.\n"
         "      Example: --zygote-diff-pid=$(pid zygote)\n"
         "  --dump-dirty-objects: additionally output dirty objects of interest.\n"
+        "  --count-zero-pages: output zero filled page stats for memory mappings of "
+        "<image-diff-pid> process.\n"
+        "  --dump-page-info=<virtual_page_index>: output PFN, kpagecount and kpageflags of a "
+        "virtual page in <image-diff-pid> process memory space.\n"
         "\n";
 
     return usage;
@@ -1880,6 +2118,8 @@ struct ImgDiagArgs : public CmdlineArgs {
   pid_t image_diff_pid_ = -1;
   pid_t zygote_diff_pid_ = -1;
   bool dump_dirty_objects_ = false;
+  bool count_zero_pages_ = false;
+  std::optional<uint64_t> virtual_page_index_;
 };
 
 struct ImgDiagMain : public CmdlineMain<ImgDiagArgs> {
@@ -1890,7 +2130,9 @@ struct ImgDiagMain : public CmdlineMain<ImgDiagArgs> {
                      args_->os_,
                      args_->image_diff_pid_,
                      args_->zygote_diff_pid_,
-                     args_->dump_dirty_objects_) == EXIT_SUCCESS;
+                     args_->dump_dirty_objects_,
+                     args_->count_zero_pages_,
+                     args_->virtual_page_index_) == EXIT_SUCCESS;
   }
 };
 
