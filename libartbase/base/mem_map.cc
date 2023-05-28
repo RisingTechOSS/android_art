@@ -1226,13 +1226,15 @@ void MemMap::TryReadable() {
 }
 
 void ZeroPages(void* address, size_t length, bool release_memory) {
-  if (length == 0) {
+  if (address == nullptr || length == 0) {
     return;
   }
+
   uint8_t* const mem_begin = reinterpret_cast<uint8_t*>(address);
   uint8_t* const mem_end = mem_begin + length;
   uint8_t* const page_begin = AlignUp(mem_begin, kPageSize);
   uint8_t* const page_end = AlignDown(mem_end, kPageSize);
+
   if (!kMadviseZeroes || page_begin >= page_end) {
     // No possible area to madvise.
     std::fill(mem_begin, mem_end, 0);
@@ -1241,6 +1243,7 @@ void ZeroPages(void* address, size_t length, bool release_memory) {
     DCHECK_LE(mem_begin, page_begin);
     DCHECK_LE(page_begin, page_end);
     DCHECK_LE(page_end, mem_end);
+
 #ifdef _WIN32
     UNUSED(release_memory);
     LOG(WARNING) << "ZeroPages does not madvise on Windows.";
@@ -1249,10 +1252,19 @@ void ZeroPages(void* address, size_t length, bool release_memory) {
     if (release_memory) {
       std::fill(mem_begin, page_begin, 0);
       std::fill(page_end, mem_end, 0);
-      bool res = madvise(page_begin, page_end - page_begin, MADV_DONTNEED);
-      CHECK_NE(res, -1) << "madvise failed";
+
+      // Split the madvise call into smaller chunks
+      const size_t pageSize = static_cast<size_t>(kPageSize);
+      uint8_t* page = page_begin;
+      while (page < page_end) {
+        uint8_t* chunk_end = std::min(page + pageSize, page_end);
+        bool res = madvise(page, chunk_end - page, MADV_DONTNEED);
+        CHECK_NE(res, -1) << "madvise failed";
+        page += pageSize;
+      }
     } else {
       std::fill(mem_begin, mem_end, 0);
+
 #ifdef MADV_FREE
       bool res = madvise(page_begin, page_end - page_begin, MADV_FREE);
       CHECK_NE(res, -1) << "madvise failed";
