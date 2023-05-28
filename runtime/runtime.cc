@@ -3096,9 +3096,6 @@ void Runtime::SetupLinearAllocForPostZygoteFork(Thread* self) {
     if (GetLinearAlloc() != nullptr) {
       GetLinearAlloc()->SetupForPostZygoteFork(self);
     }
-    if (GetStartupLinearAlloc() != nullptr) {
-      GetStartupLinearAlloc()->SetupForPostZygoteFork(self);
-    }
     {
       Locks::mutator_lock_->AssertNotHeld(self);
       ReaderMutexLock mu2(self, *Locks::mutator_lock_);
