@@ -298,7 +298,7 @@ class ClassLinker::VisiblyInitializedCallback final
     }
   }
 
-  static constexpr size_t kMaxClasses = 16;
+  static constexpr size_t kMaxClasses = 48;
 
   ClassLinker* const class_linker_;
   size_t num_classes_;
