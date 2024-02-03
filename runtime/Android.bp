@@ -687,6 +687,13 @@ art_cc_library {
         "test_broken_com.android.art",
     ],
     afdo: true,
+    target: {
+        android: {
+            lto: {
+                thin: true,
+            },
+        },
+    },
 }
 
 // "Broken" version of the ART runtime library, used only for testing.
