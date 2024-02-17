@@ -48,6 +48,17 @@
 #include "well_known_classes.h"
 
 namespace art {
+#include <vector>
+#if defined(__linux__)
+#include <unistd.h>
+#include <sched.h> 
+#if defined(__arm__)
+#include <sys/personality.h>
+#include <sys/utsname.h>
+
+#endif  // __arm__
+#endif
+
 namespace gc {
 namespace collector {
 
@@ -218,7 +229,76 @@ ConcurrentCopying::~ConcurrentCopying() {
   STLDeleteElements(&pooled_mark_stacks_);
 }
 
+std::vector<int32_t> original_cpu_set_;
+std::vector<int32_t> cpu_set_ = {0,1,2,3,4,5};
+
+static void SaveOriginalCpuAffinity() {
+#ifdef __linux__
+  cpu_set_t cpu_set;
+  CPU_ZERO(&cpu_set);
+  if (sched_getaffinity(0, sizeof(cpu_set), &cpu_set) == -1) {
+    // Failure to get affinity.
+    LOG(INFO) << "Failed to get CPU affinity.";
+    return;
+  }
+  original_cpu_set_.clear();
+  for (int cpu = 0; cpu < CPU_SETSIZE; cpu++) {
+    if (CPU_ISSET(cpu, &cpu_set)) {
+      original_cpu_set_.push_back(cpu);
+    }
+  }
+#endif
+}
+
+static void RestoreOriginalCpuAffinity() {
+#ifdef __linux__
+  cpu_set_t cpu_set;
+  CPU_ZERO(&cpu_set);
+  for (int32_t cpu : original_cpu_set_) {
+    CPU_SET(cpu, &cpu_set);
+  }
+  if (sched_setaffinity(getpid(), sizeof(cpu_set), &cpu_set) == -1) {
+    // Failure to set affinity.
+    LOG(INFO) << "Failed to restore CPU affinity.";
+  }
+#endif
+}
+
+// Set CPU affinity from a string containing a comma-separated list of numeric CPU identifiers.
+static void SetCpuAffinity(const std::vector<int32_t>& cpu_list) {
+#ifdef __linux__
+  int cpu_count = sysconf(_SC_NPROCESSORS_CONF);
+  cpu_set_t target_cpu_set;
+  CPU_ZERO(&target_cpu_set);
+
+  for (int32_t cpu : cpu_list) {
+    if (cpu >= 0 && cpu < cpu_count) {
+      CPU_SET(cpu, &target_cpu_set);
+    } else {
+      // Argument error is considered fatal, suggests misconfigured system properties.
+      LOG(WARNING) << "Invalid cpu :" << cpu
+                   << " specified in --cpu-set argument (nprocessors =" << cpu_count << ")";
+    }
+  }
+
+  if (sched_setaffinity(getpid(), sizeof(target_cpu_set), &target_cpu_set) == -1) {
+    // Failure to set affinity may be outside control of requestor, log warning rather than
+    // treating as fatal.
+    LOG(INFO) << "Failed to set CPU affinity.";
+  }
+#else
+  LOG(WARNING) << "--cpu-set not supported on this platform.";
+#endif  // __linux__
+}
+
 void ConcurrentCopying::RunPhases() {
+
+  SaveOriginalCpuAffinity();
+
+  if (!cpu_set_.empty()) {
+    SetCpuAffinity(cpu_set_);
+  }
+
   CHECK(kUseBakerReadBarrier || kUseTableLookupReadBarrier);
   CHECK(!is_active_);
   is_active_ = true;
@@ -270,6 +350,8 @@ void ConcurrentCopying::RunPhases() {
   CHECK(is_active_);
   is_active_ = false;
   thread_running_gc_ = nullptr;
+
+  RestoreOriginalCpuAffinity();
 }
 
 class ConcurrentCopying::ActivateReadBarrierEntrypointsCheckpoint : public Closure {
