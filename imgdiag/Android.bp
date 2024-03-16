@@ -58,6 +58,9 @@ cc_defaults {
         },
     },
     symlink_preferred_arch: true,
+    lto: {
+        thin: true,
+    },
 }
 
 art_cc_binary {

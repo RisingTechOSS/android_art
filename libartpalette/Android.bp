@@ -70,6 +70,9 @@ art_cc_library {
             srcs: ["apex/palette.cc"],
             shared_libs: ["liblog"],
             version_script: "libartpalette.map",
+            lto: {
+                thin: true,
+            },
         },
         host_linux: {
             header_libs: ["libbase_headers"],

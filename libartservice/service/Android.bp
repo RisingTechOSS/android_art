@@ -33,6 +33,9 @@ cc_defaults {
     shared_libs: [
         "libbase",
     ],
+    lto: {
+        thin: true,
+    },
 }
 
 cc_library {

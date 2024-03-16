@@ -54,6 +54,9 @@ cc_defaults {
     header_libs: [
         "libnativehelper_header_only",
     ],
+    lto: {
+        thin: true,
+    },
 }
 
 art_cc_library {

@@ -157,6 +157,9 @@ cc_defaults {
             whole_static_libs: [
                 "libcap",
             ],
+            lto: {
+                thin: true,
+            },
         },
         linux_glibc: {
             whole_static_libs: [

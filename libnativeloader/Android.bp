@@ -67,6 +67,9 @@ art_cc_library {
             static_libs: [
                 "libPlatformProperties",
             ],
+            lto: {
+                thin: true,
+            },
         },
     },
     stubs: {

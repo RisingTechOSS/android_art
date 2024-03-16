@@ -103,6 +103,9 @@ cc_defaults {
     shared_libs: [
         "libbase",
     ],
+    lto: {
+        thin: true,
+    },
 }
 
 art_cc_library {

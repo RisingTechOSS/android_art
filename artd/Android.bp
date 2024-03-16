@@ -43,6 +43,9 @@ cc_defaults {
     static_libs: [
         "artd-aidl-ndk",
     ],
+    lto: {
+        thin: true,
+    },
 }
 
 art_cc_binary {

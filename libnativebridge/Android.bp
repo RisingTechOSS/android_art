@@ -65,6 +65,9 @@ art_cc_library {
                 "libnativeloader-headers", // For dlext_namespaces.h
             ],
             shared_libs: ["libdl_android"],
+            lto: {
+                thin: true,
+            },
         },
     },
 
